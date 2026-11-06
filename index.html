@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>body{margin:0}[hidden]{display:none!important}</style>
+<title>山林科學打地鼠</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@700;900&display=swap" rel="stylesheet">
+<style>
+/* Layout: HUD (score / title / time) above one mountain stage with three burrows, feedback line and button below. Single dark-forest look by design. */
+:root {
+  --forest-deep: #1b3025;
+  --forest: #2f5d3e;
+  --moss: #8fb85a;
+  --soil: #6b4a2d;
+  --soil-dark: #2f2014;
+  --wood: #c48a4b;
+  --stone: #a9aba5;
+  --paper: #f2ebd7;
+  --ink: #1d2b22;
+  --good: #bfe08a;
+  --care: #f0c36a;
+  --font-display: "Noto Serif TC", "Songti TC", "PMingLiU", serif;
+  --font-body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--forest-deep);
+  color: var(--paper);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+  padding-block: 16px 24px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  -webkit-user-select: none;
+  user-select: none;
+}
+.game { max-width: 780px; margin: 0 auto; display: grid; gap: 12px; }
+
+/* HUD */
+.hud { display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 12px; }
+.stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.stat.right { align-items: flex-end; }
+.lab { font-size: .8rem; letter-spacing: .14em; color: var(--moss); }
+.num { font: 900 clamp(2.4rem, 9vw, 3.6rem)/1 var(--font-display); font-variant-numeric: tabular-nums; }
+.num.bump { animation: bump .22s ease-out; }
+.name { text-align: center; min-width: 0; }
+h1 { margin: 0; font: 900 clamp(1.25rem, 4.4vw, 1.9rem)/1.2 var(--font-display); text-wrap: balance; }
+.hint { margin: 4px 0 0; font-size: .88rem; color: #cfd8c0; text-wrap: balance; }
+@media (max-width: 540px) {
+  .hud { grid-template-columns: 1fr 1fr; grid-template-areas: "name name" "score time"; }
+  .name { grid-area: name; }
+  .stat.score { grid-area: score; }
+  .stat.time { grid-area: time; }
+}
+.timebar { height: 6px; background: rgba(255,255,255,.14); border-radius: 3px; overflow: hidden; }
+.timebar > i { display: block; height: 100%; width: 100%; background: var(--moss); transform-origin: left center; transition: transform .1s linear, background-color .3s; }
+.timebar > i.low { background: var(--care); }
+
+/* Stage */
+.stage { position: relative; aspect-ratio: 8 / 5; min-height: 440px; overflow: hidden; border-radius: 10px; background: #cfe0cf; isolation: isolate; }
+.bg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.holes { position: absolute; left: 50%; bottom: 6%; transform: translateX(-50%); width: min(96%, 640px); display: grid; grid-template-columns: repeat(3, 1fr); gap: 3%; align-items: end; }
+.hole { position: relative; appearance: none; border: 0; background: none; padding: 0; margin: 0; aspect-ratio: 1 / 1.05; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; color: inherit; font: inherit; border-radius: 12px; }
+.hole:focus-visible { outline: 3px solid var(--paper); outline-offset: 4px; }
+.well { position: absolute; left: 4%; right: 4%; bottom: 3%; height: 32%; border-radius: 50%;
+  background: radial-gradient(ellipse at 50% 30%, #0f0804 0 52%, #3a2616 100%);
+  box-shadow: 0 0 0 5px #a07a4c, 0 9px 0 5px #5a3d24; }
+.clip { position: absolute; left: 0; right: 0; top: 0; bottom: 19%; overflow: hidden; pointer-events: none; }
+.critter { position: absolute; left: 10%; right: 10%; bottom: 0; aspect-ratio: 1; transform: translateY(108%); transition: transform .12s cubic-bezier(.2, .9, .3, 1.15); }
+.critter svg { display: block; width: 100%; height: 100%; transform-origin: 50% 100%; }
+.hole.up .critter { transform: translateY(0); }
+.hole.hit .critter svg { animation: squash .14s ease-out forwards; }
+.float { position: absolute; left: 50%; top: 4%; transform: translateX(-50%); font: 900 1.9rem/1 var(--font-display); pointer-events: none; text-shadow: 0 2px 0 rgba(0,0,0,.35); animation: floatUp .8s ease-out forwards; z-index: 3; }
+.float.good { color: #e4ffb8; }
+.float.care { color: var(--care); }
+
+/* Panels (intro and result) */
+.panel { position: absolute; inset: 0; display: flex; overflow: auto; padding: 14px; background: rgba(20, 36, 27, .58); z-index: 5; }
+.card { margin: auto; width: 100%; max-width: 560px; background: var(--paper); color: var(--ink); border-radius: 10px; padding: 18px 18px 20px; box-shadow: 0 8px 0 rgba(0,0,0,.2); display: grid; gap: 12px; -webkit-user-select: text; user-select: text; }
+.eyebrow { margin: 0; font-size: .78rem; letter-spacing: .18em; color: var(--forest); font-weight: 700; }
+.card h2 { margin: 0; font: 900 1.55rem/1.2 var(--font-display); text-wrap: balance; }
+.card h3 { margin: 0 0 2px; font: 700 .95rem/1.3 var(--font-body); color: var(--forest); }
+.card p { margin: 0; font-size: .96rem; line-height: 1.65; }
+.lever { width: 100%; max-width: 100%; height: auto; display: block; background: #e3dcc3; border-radius: 8px; }
+.legend { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.legend li { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ico { flex: none; width: 52px; height: 52px; border-radius: 8px; background: #7b5a38; display: grid; place-items: end center; overflow: hidden; }
+.ico svg { width: 44px; height: 44px; display: block; }
+.legend b { display: block; font-size: .98rem; line-height: 1.3; }
+.legend small { display: block; font-size: .8rem; line-height: 1.35; color: #4a5a4f; }
+.result-top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.big { font: 900 4rem/1 var(--font-display); font-variant-numeric: tabular-nums; color: var(--forest); }
+.big span { font-size: 1.1rem; margin-left: 4px; }
+.result-top > div:last-child { flex: 1 1 200px; min-width: 0; }
+.tally { font-size: .88rem; color: #4a5a4f; }
+.sum { border-top: 2px solid #d8cfb2; padding-top: 10px; }
+
+/* Feedback and controls */
+.feedback { min-height: 2.9rem; margin: 0; text-align: center; font: 700 1.15rem/1.4 var(--font-body); text-wrap: balance; }
+.feedback.good { color: var(--good); }
+.feedback.care { color: var(--care); }
+.controls { display: flex; justify-content: center; align-items: center; gap: 14px; flex-wrap: wrap; min-height: 58px; }
+.btn { appearance: none; border: 0; cursor: pointer; font: 900 1.3rem/1 var(--font-display); padding: 15px 42px; background: var(--moss); color: var(--forest-deep); border-radius: 8px; box-shadow: 0 5px 0 #4f7a2c; touch-action: manipulation; }
+.btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #4f7a2c; }
+.btn:focus-visible, .ghost:focus-visible { outline: 3px solid var(--paper); outline-offset: 3px; }
+.ghost { appearance: none; cursor: pointer; font: 500 .85rem/1 var(--font-body); padding: 10px 14px; background: transparent; color: var(--paper); border: 1.5px solid rgba(242, 235, 215, .45); border-radius: 8px; }
+.ghost[aria-pressed="false"] { opacity: .65; }
+
+@keyframes floatUp { from { opacity: 1; transform: translate(-50%, 0); } to { opacity: 0; transform: translate(-50%, -46px); } }
+@keyframes squash { 0% { transform: scale(1, 1); } 100% { transform: scale(1.12, .8); opacity: .6; } }
+@keyframes bump { 0% { transform: scale(1); } 50% { transform: scale(1.18); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .critter { transition-duration: .01s; }
+  .hole.hit .critter svg, .num.bump { animation: none; }
+  .float { animation-duration: .01s; animation-delay: .6s; }
+}
+</style>
+</head>
+<body>
+
+<main class="game">
+  <header class="hud">
+    <div class="stat score"><span class="lab">分數</span><span class="num" id="score">0</span></div>
+    <div class="name">
+      <h1>山林科學打地鼠</h1>
+      <p class="hint">點擊木棍和小石頭，保護動物和花朵！</p>
+    </div>
+    <div class="stat right time"><span class="lab">剩餘時間</span><span class="num" id="time">20</span></div>
+  </header>
+  <div class="timebar" aria-hidden="true"><i id="bar"></i></div>
+
+  <section class="stage" id="stage" aria-label="山林遊戲場景">
+    <svg class="bg" viewBox="0 0 800 500" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <defs>
+        <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b6d3c6"/><stop offset="1" stop-color="#e8edd3"/></linearGradient>
+        <linearGradient id="dirt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8a6641"/><stop offset="1" stop-color="#6b4a2d"/></linearGradient>
+      </defs>
+      <rect width="800" height="500" fill="url(#sky)"/>
+      <path d="M0 250 L120 120 L215 205 L335 80 L470 225 L585 135 L700 215 L800 150 L800 330 L0 330Z" fill="#a3c0ad"/>
+      <path d="M0 290 L100 200 L205 262 L335 165 L455 272 L565 205 L685 275 L800 210 L800 340 L0 340Z" fill="#729d7e"/>
+      <path d="M0 330 C120 280 230 312 340 296 C470 278 570 312 800 282 L800 360 L0 360Z" fill="#3f6f4a"/>
+      <g fill="#2c5a3a">
+        <path d="M70 318 L92 262 L114 318Z"/><path d="M104 322 L122 276 L140 322Z"/>
+        <path d="M250 312 L268 268 L286 312Z"/><path d="M522 314 L540 270 L558 314Z"/>
+        <path d="M690 316 L714 258 L738 316Z"/><path d="M726 322 L744 280 L762 322Z"/>
+      </g>
+      <path d="M0 345 C150 322 300 346 450 332 C600 318 700 340 800 328 L800 500 L0 500Z" fill="#5f8a45"/>
+      <path d="M0 378 C160 360 320 382 480 368 C620 356 720 372 800 366 L800 500 L0 500Z" fill="url(#dirt)"/>
+    </svg>
+
+    <div class="holes" id="holes"></div>
+
+    <div class="panel" id="intro">
+      <div class="card">
+        <p class="eyebrow">地方科學觀察員・山林調查</p>
+        <h2>大石頭擋住了山路</h2>
+        <p>找出能幫忙移動它的材料，同時保護山林裡的動物和花朵。每局 20 秒。</p>
+        <svg class="lever" viewBox="0 0 280 100" role="img" aria-label="木棍當槓桿，小石頭當支點，抬起大石頭的示意圖">
+          <line x1="0" y1="90" x2="280" y2="90" stroke="#8a7c5a" stroke-width="2"/>
+          <path d="M92 90 L100 64 L116 64 L124 90Z" fill="#a9aba5" stroke="#5d5f5a" stroke-width="2.5" stroke-linejoin="round"/>
+          <line x1="28" y1="52" x2="248" y2="84" stroke="#5e3b1f" stroke-width="12" stroke-linecap="round"/>
+          <line x1="28" y1="52" x2="248" y2="84" stroke="#d29a5a" stroke-width="7" stroke-linecap="round"/>
+          <circle cx="56" cy="34" r="19" fill="#8d8f8a" stroke="#4e504c" stroke-width="3"/>
+          <path d="M46 28 C50 22 58 21 62 24" stroke="#c4c6c0" stroke-width="3" fill="none" stroke-linecap="round"/>
+          <path d="M222 38 L222 66" stroke="#1d2b22" stroke-width="3" stroke-linecap="round"/>
+          <path d="M214 58 L222 68 L230 58" stroke="#1d2b22" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <text x="108" y="30" font-size="11" fill="#1d2b22" font-family="sans-serif" text-anchor="middle">小石頭＝支點</text>
+          <text x="196" y="26" font-size="11" fill="#1d2b22" font-family="sans-serif" text-anchor="middle">木棍＝槓桿</text>
+        </svg>
+        <p>木棍和小石頭可以幫助我們製作槓桿。</p>
+        <ul class="legend" id="legend"></ul>
+      </div>
+    </div>
+
+    <div class="panel" id="result" hidden></div>
+  </section>
+
+  <p class="feedback" id="feedback" role="status" aria-live="polite"></p>
+
+  <div class="controls">
+    <button class="btn" id="startBtn" type="button">開始</button>
+    <button class="ghost" id="soundBtn" type="button" aria-pressed="true">音效 開</button>
+  </div>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (s) { return document.querySelector(s); };
+
+  var DURATION = 20000, SHOW = 800, GAP = 200, HIT_HIDE = 140;
+
+  function petals() {
+    var s = '';
+    for (var i = 0; i < 8; i++) {
+      s += '<ellipse cx="50" cy="22" rx="8" ry="13" transform="rotate(' + (i * 45) + ' 50 38)" fill="#f9c3d3" stroke="#b9708a" stroke-width="2"/>';
+    }
+    return s;
+  }
+
+  var SVG = {
+    stick:
+      '<svg viewBox="0 0 100 100" aria-hidden="true">' +
+      '<g fill="none" stroke-linecap="round">' +
+      '<path d="M40 104 L62 16" stroke="#5e3b1f" stroke-width="17"/>' +
+      '<path d="M54 46 L77 26" stroke="#5e3b1f" stroke-width="12"/>' +
+      '<path d="M40 104 L62 16" stroke="#d29a5a" stroke-width="11"/>' +
+      '<path d="M54 46 L77 26" stroke="#d29a5a" stroke-width="6"/>' +
+      '<path d="M45 84 L50 64" stroke="#a8702f" stroke-width="2.5"/>' +
+      '<path d="M53 52 L58 34" stroke="#a8702f" stroke-width="2.5"/>' +
+      '</g>' +
+      '<ellipse cx="62" cy="15" rx="5.5" ry="3.2" transform="rotate(-14 62 15)" fill="#f3d6a4" stroke="#5e3b1f" stroke-width="2"/>' +
+      '<path d="M77 26 C84 15 95 16 95 16 C93 27 85 31 77 26Z" fill="#8fb85a" stroke="#3f6a2c" stroke-width="2" stroke-linejoin="round"/>' +
+      '</svg>',
+    stone:
+      '<svg viewBox="0 0 100 100" aria-hidden="true">' +
+      '<path d="M14 100 C8 76 18 50 42 42 C66 34 90 50 88 76 C87 90 82 98 76 100Z" fill="#bcbeb8" stroke="#5d5f5a" stroke-width="4" stroke-linejoin="round"/>' +
+      '<path d="M30 56 C36 48 46 45 54 46" stroke="#eceee8" stroke-width="5" fill="none" stroke-linecap="round"/>' +
+      '<path d="M60 70 L68 80 L64 90" stroke="#8d8f8a" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<ellipse cx="30" cy="84" rx="6" ry="4" fill="#9fa19b"/>' +
+      '</svg>',
+    animal:
+      '<svg viewBox="0 0 100 100" aria-hidden="true">' +
+      '<path d="M66 100 C98 90 98 44 74 30 C82 52 70 60 60 66Z" fill="#b5703a" stroke="#6b3f1e" stroke-width="3" stroke-linejoin="round"/>' +
+      '<ellipse cx="46" cy="76" rx="23" ry="26" fill="#c98a50" stroke="#6b3f1e" stroke-width="3"/>' +
+      '<ellipse cx="46" cy="82" rx="12" ry="17" fill="#f3e2c0"/>' +
+      '<circle cx="45" cy="42" r="18" fill="#c98a50" stroke="#6b3f1e" stroke-width="3"/>' +
+      '<circle cx="32" cy="26" r="6.5" fill="#c98a50" stroke="#6b3f1e" stroke-width="3"/><circle cx="32" cy="26" r="2.8" fill="#f3e2c0"/>' +
+      '<circle cx="58" cy="25" r="6.5" fill="#c98a50" stroke="#6b3f1e" stroke-width="3"/><circle cx="58" cy="25" r="2.8" fill="#f3e2c0"/>' +
+      '<ellipse cx="45" cy="50" rx="9" ry="6.5" fill="#f3e2c0"/>' +
+      '<circle cx="38" cy="40" r="2.8" fill="#2a1a0e"/><circle cx="52" cy="40" r="2.8" fill="#2a1a0e"/>' +
+      '<ellipse cx="45" cy="48" rx="2.8" ry="2.1" fill="#3a2214"/>' +
+      '<ellipse cx="36" cy="68" rx="5" ry="4" fill="#c98a50" stroke="#6b3f1e" stroke-width="2"/><ellipse cx="55" cy="68" rx="5" ry="4" fill="#c98a50" stroke="#6b3f1e" stroke-width="2"/>' +
+      '</svg>',
+    flower:
+      '<svg viewBox="0 0 100 100" aria-hidden="true">' +
+      '<path d="M50 104 L50 44" stroke="#3f7a3a" stroke-width="6" stroke-linecap="round"/>' +
+      '<path d="M50 80 C36 78 28 68 28 60 C40 60 48 68 50 80Z" fill="#6fa64a" stroke="#2f5d3e" stroke-width="2.5" stroke-linejoin="round"/>' +
+      '<path d="M50 70 C64 68 72 58 72 50 C60 50 52 58 50 70Z" fill="#6fa64a" stroke="#2f5d3e" stroke-width="2.5" stroke-linejoin="round"/>' +
+      petals() +
+      '<circle cx="50" cy="38" r="9" fill="#f2c14e" stroke="#b8862a" stroke-width="2.5"/>' +
+      '</svg>'
+  };
+
+  var KINDS = [
+    { id: 'stick',  name: '木棍',   good: true,  msg: '木棍可以作為槓桿！',                 svg: SVG.stick,  note: '點擊 +1・槓桿' },
+    { id: 'stone',  name: '小石頭', good: true,  msg: '小石頭可以作為支點！',               svg: SVG.stone,  note: '點擊 +1・支點' },
+    { id: 'animal', name: '動物',   good: false, msg: '觀察就好，不要干擾動物！',           svg: SVG.animal, note: '不要點，點到 −1' },
+    { id: 'flower', name: '花朵',   good: false, msg: '花朵是環境的一部分，不要破壞它！',   svg: SVG.flower, note: '不要點，點到 −1' }
+  ];
+  var LABELS = ['左邊洞口', '中間洞口', '右邊洞口'];
+
+  // Legend on the intro card
+  $('#legend').innerHTML = KINDS.map(function (k) {
+    return '<li><span class="ico">' + k.svg + '</span><span><b>' + k.name + '</b><small>' + k.note + '</small></span></li>';
+  }).join('');
+
+  // Build the three burrows
+  var holesEl = $('#holes');
+  var holes = LABELS.map(function (label, i) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'hole';
+    b.setAttribute('aria-label', label);
+    b.innerHTML = '<span class="well"></span><span class="clip"><span class="critter"></span></span>';
+    b.addEventListener('pointerdown', function (e) { e.preventDefault(); whack(i); });
+    b.addEventListener('click', function (e) { if (e.detail === 0) whack(i); });
+    holesEl.appendChild(b);
+    return { btn: b, crit: b.querySelector('.critter') };
+  });
+
+  var scoreEl = $('#score'), timeEl = $('#time'), bar = $('#bar'), fb = $('#feedback');
+  var startBtn = $('#startBtn'), soundBtn = $('#soundBtn'), intro = $('#intro'), result = $('#result');
+
+  var st = { playing: false, score: 0, hits: 0, misses: 0, endAt: 0, cur: null, last: -1 };
+  var showT = 0, gapT = 0, tickT = 0, fbT = 0, resT = 0;
+
+  // Sound
+  var ctx = null, soundOn = true;
+  function initAudio() {
+    try {
+      if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) ctx = new AC();
+    } catch (e) { ctx = null; }
+  }
+  function beep(kind) {
+    if (!soundOn || !ctx) return;
+    try {
+      var t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      if (kind === 'pop') {
+        o.type = 'sine';
+        o.frequency.setValueAtTime(520, t);
+        o.frequency.exponentialRampToValueAtTime(900, t + 0.09);
+        g.gain.setValueAtTime(0.2, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+        o.start(t); o.stop(t + 0.16);
+      } else {
+        o.type = 'triangle';
+        o.frequency.setValueAtTime(240, t);
+        o.frequency.exponentialRampToValueAtTime(110, t + 0.22);
+        g.gain.setValueAtTime(0.22, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+        o.start(t); o.stop(t + 0.3);
+      }
+    } catch (e) {}
+  }
+  soundBtn.addEventListener('click', function () {
+    soundOn = !soundOn;
+    soundBtn.setAttribute('aria-pressed', String(soundOn));
+    soundBtn.textContent = soundOn ? '音效 開' : '音效 關';
+  });
+
+  function setFeedback(text, good) {
+    clearTimeout(fbT);
+    fb.textContent = text;
+    fb.className = 'feedback' + (text ? (good ? ' good' : ' care') : '');
+    if (text) fbT = setTimeout(function () { fb.textContent = ''; fb.className = 'feedback'; }, 1500);
+  }
+
+  function floatLabel(btn, text, good) {
+    var s = document.createElement('span');
+    s.className = 'float ' + (good ? 'good' : 'care');
+    s.textContent = text;
+    btn.appendChild(s);
+    setTimeout(function () { if (s.parentNode) s.parentNode.removeChild(s); }, 850);
+  }
+
+  function setScore() {
+    scoreEl.textContent = st.score;
+    scoreEl.classList.remove('bump');
+    void scoreEl.offsetWidth;
+    scoreEl.classList.add('bump');
+  }
+
+  // Round cycle: show 0.8 s, gone 0.2 s, next object
+  function nextRound() {
+    if (!st.playing) return;
+    var kind = KINDS[Math.floor(Math.random() * KINDS.length)];
+    var h;
+    do { h = Math.floor(Math.random() * 3); } while (h === st.last);
+    st.last = h;
+    var el = holes[h];
+    el.crit.innerHTML = kind.svg;
+    st.cur = { hole: h, kind: kind, done: false };
+    el.btn.setAttribute('aria-label', LABELS[h] + '，出現' + kind.name);
+    el.btn.classList.remove('hit');
+    void el.btn.offsetWidth;
+    el.btn.classList.add('up');
+    showT = setTimeout(hideCur, SHOW);
+  }
+
+  function hideCur() {
+    var c = st.cur;
+    if (!c) return;
+    var el = holes[c.hole];
+    el.btn.classList.remove('up', 'hit');
+    el.btn.setAttribute('aria-label', LABELS[c.hole]);
+    st.cur = null;
+    if (st.playing) gapT = setTimeout(nextRound, GAP);
+  }
+
+  function whack(i) {
+    var c = st.cur;
+    if (!st.playing || !c || c.hole !== i || c.done) return;
+    c.done = true;
+    clearTimeout(showT);
+    var el = holes[i];
+    el.btn.classList.add('hit');
+    if (c.kind.good) {
+      st.score += 1; st.hits += 1; beep('pop');
+    } else {
+      st.score = Math.max(0, st.score - 1); st.misses += 1; beep('oops');
+    }
+    setScore();
+    floatLabel(el.btn, c.kind.good ? '+1' : '−1', c.kind.good);
+    setFeedback(c.kind.msg, c.kind.good);
+    showT = setTimeout(hideCur, HIT_HIDE);
+  }
+
+  function tick() {
+    var left = Math.max(0, st.endAt - performance.now());
+    timeEl.textContent = Math.ceil(left / 1000);
+    bar.style.transform = 'scaleX(' + (left / DURATION) + ')';
+    bar.classList.toggle('low', left <= 5000);
+    if (left <= 0) finish();
+  }
+
+  function resetTimers() {
+    clearTimeout(showT); clearTimeout(gapT); clearTimeout(resT); clearInterval(tickT);
+  }
+
+  function start() {
+    initAudio();
+    resetTimers();
+    if (st.cur) { holes[st.cur.hole].btn.classList.remove('up', 'hit'); st.cur = null; }
+    st.score = 0; st.hits = 0; st.misses = 0; st.last = -1; st.playing = true;
+    scoreEl.textContent = '0';
+    setFeedback('', true);
+    intro.hidden = true; result.hidden = true; startBtn.hidden = true;
+    st.endAt = performance.now() + DURATION;
+    tickT = setInterval(tick, 100);
+    tick();
+    gapT = setTimeout(nextRound, 400);
+  }
+
+  function tierFor(score) {
+    if (score >= 12) return { t: '地方科學家', f: '你能快速找出科學材料，也懂得保護環境！' };
+    if (score >= 7)  return { t: '山林觀察員', f: '你的觀察力很好，再注意物件的用途會更棒！' };
+    return { t: '探究新手', f: '木棍是槓桿，小石頭是支點，再試一次吧！' };
+  }
+
+  function finish() {
+    if (!st.playing) return;
+    st.playing = false;
+    clearInterval(tickT); clearTimeout(gapT); clearTimeout(showT);
+    timeEl.textContent = '0';
+    bar.style.transform = 'scaleX(0)';
+    hideCur();
+    resT = setTimeout(showResult, 450);
+  }
+
+  function showResult() {
+    var tier = tierFor(st.score);
+    result.innerHTML =
+      '<div class="card">' +
+        '<p class="eyebrow">調查結果</p>' +
+        '<div class="result-top">' +
+          '<div class="big">' + st.score + '<span>分</span></div>' +
+          '<div><h2>' + tier.t + '</h2><p>' + tier.f + '</p></div>' +
+        '</div>' +
+        '<p class="tally">點中科學材料 ' + st.hits + ' 次，誤點動植物 ' + st.misses + ' 次</p>' +
+        '<div class="sum"><h3>學習總結</h3><p>木棍可以作為槓桿，小石頭可以作為支點。槓桿與支點能幫助我們移動較重的物體。觀察地方環境時，也要保護動物和植物。</p></div>' +
+        '<div class="sum"><h3>PBE 總結</h3><p>從地方環境觀察材料與問題，再運用科學知識思考解決方法，就是 PBE 的學習方式。</p></div>' +
+      '</div>';
+    result.scrollTop = 0;
+    result.hidden = false;
+    startBtn.textContent = '再玩一次';
+    startBtn.hidden = false;
+    startBtn.focus({ preventScroll: true });
+  }
+
+  startBtn.addEventListener('click', start);
+})();
+</script>
+</body>
+</html>
